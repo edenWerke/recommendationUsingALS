@@ -83,9 +83,9 @@ def recommend(request: RecommendationRequest):
         recommendations.append({"item_id": item_id, "score": float(score)})
     return {"user_id": int(user_id), "recommendations": recommendations}
 
-@app.get("/users/")
-def list_users():
-    return {"user_ids": list(user_to_idx.keys())}
+# @app.get("/users/")
+# def list_users():
+#     return {"user_ids": list(user_to_idx.keys())}
 
 @app.get("/")
 def root():
