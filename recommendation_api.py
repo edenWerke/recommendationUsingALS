@@ -25,8 +25,13 @@ def load_data_and_train():
         JOIN order_items oi ON o.order_id = oi.order_id
         GROUP BY o.customer_id, oi.product_id
     """, conn)
-    all_users = pd.concat([clicks_df['user_id'], orders_df['user_id']]).unique()
-    all_items = pd.concat([clicks_df['item_id'], orders_df['item_id']]).unique()
+    ratings_df = pd.read_sql("""
+        SELECT user_id, product_id as item_id, rating
+        FROM user_reviews
+    """, conn)
+    # Prepare user and item mappings (include all users/items from all sources)
+    all_users = pd.concat([clicks_df['user_id'], orders_df['user_id'], ratings_df['user_id']]).unique()
+    all_items = pd.concat([clicks_df['item_id'], orders_df['item_id'], ratings_df['item_id']]).unique()
     user_to_idx = {user: idx for idx, user in enumerate(all_users)}
     item_to_idx = {item: idx for idx, item in enumerate(all_items)}
     click_matrix = sparse.csr_matrix(
@@ -39,7 +44,12 @@ def load_data_and_train():
          (orders_df['user_id'].map(user_to_idx), orders_df['item_id'].map(item_to_idx))),
         shape=(len(user_to_idx), len(item_to_idx))
     )
-    interaction_matrix = click_matrix + (order_matrix * 5)
+    rating_matrix = sparse.csr_matrix(
+        (ratings_df['rating'],
+         (ratings_df['user_id'].map(user_to_idx), ratings_df['item_id'].map(item_to_idx))),
+        shape=(len(user_to_idx), len(item_to_idx))
+    )
+    interaction_matrix = click_matrix + (order_matrix * 5) + (rating_matrix * 3)
     model = AlternatingLeastSquares(factors=64, regularization=0.01, iterations=15)
     model.fit(interaction_matrix)
     conn.close()
