@@ -1,3 +1,4 @@
+
 import psycopg2
 import pandas as pd
 import numpy as np
@@ -5,54 +6,62 @@ import scipy.sparse as sparse
 from implicit.als import AlternatingLeastSquares
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import create_engine
+import os
+from fastapi.middleware.cors import CORSMiddleware
+
+DATABASE_URL = "postgresql://postgres:edenw@localhost:5000/myDump"
+engine = create_engine(DATABASE_URL)
 
 def load_data_and_train():
-    conn = psycopg2.connect(
-        user="postgres",
-        password="edenw",
-        host="localhost",
-        port="5000",  # Change to 5432 if that's your default
-        database="myDump"
-    )
     clicks_df = pd.read_sql("""
         SELECT user_id, product_id as item_id, COUNT(*) as click_count
         FROM user_clicks
         GROUP BY user_id, product_id
-    """, conn)
+    """, engine)
+    
     orders_df = pd.read_sql("""
         SELECT o.customer_id as user_id, oi.product_id as item_id, COUNT(*) as order_count
         FROM orders o
         JOIN order_items oi ON o.order_id = oi.order_id
         GROUP BY o.customer_id, oi.product_id
-    """, conn)
+    """, engine)
+    
     ratings_df = pd.read_sql("""
         SELECT user_id, product_id as item_id, rating
         FROM user_reviews
-    """, conn)
-    # Prepare user and item mappings (include all users/items from all sources)
+    """, engine)
+
     all_users = pd.concat([clicks_df['user_id'], orders_df['user_id'], ratings_df['user_id']]).unique()
     all_items = pd.concat([clicks_df['item_id'], orders_df['item_id'], ratings_df['item_id']]).unique()
     user_to_idx = {user: idx for idx, user in enumerate(all_users)}
     item_to_idx = {item: idx for idx, item in enumerate(all_items)}
+    
     click_matrix = sparse.csr_matrix(
         (clicks_df['click_count'],
          (clicks_df['user_id'].map(user_to_idx), clicks_df['item_id'].map(item_to_idx))),
         shape=(len(user_to_idx), len(item_to_idx))
     )
+    
     order_matrix = sparse.csr_matrix(
         (orders_df['order_count'],
          (orders_df['user_id'].map(user_to_idx), orders_df['item_id'].map(item_to_idx))),
         shape=(len(user_to_idx), len(item_to_idx))
     )
+    
     rating_matrix = sparse.csr_matrix(
         (ratings_df['rating'],
          (ratings_df['user_id'].map(user_to_idx), ratings_df['item_id'].map(item_to_idx))),
         shape=(len(user_to_idx), len(item_to_idx))
     )
+    
     interaction_matrix = click_matrix + (order_matrix * 5) + (rating_matrix * 3)
+    
+    os.environ['OPENBLAS_NUM_THREADS'] = '1'
+    
     model = AlternatingLeastSquares(factors=64, regularization=0.01, iterations=15)
     model.fit(interaction_matrix)
-    conn.close()
+    
     return model, user_to_idx, item_to_idx, interaction_matrix
 
 def get_default_recommendations(n=5):
@@ -68,6 +77,14 @@ def get_default_recommendations(n=5):
 
 model, user_to_idx, item_to_idx, interaction_matrix = load_data_and_train()
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class RecommendationRequest(BaseModel):
     user_id: int
@@ -92,10 +109,6 @@ def recommend(request: RecommendationRequest):
         item_id = int(idx_to_item[item_idx])
         recommendations.append({"item_id": item_id, "score": float(score)})
     return {"user_id": int(user_id), "recommendations": recommendations}
-
-# @app.get("/users/")
-# def list_users():
-#     return {"user_ids": list(user_to_idx.keys())}
 
 @app.get("/")
 def root():
