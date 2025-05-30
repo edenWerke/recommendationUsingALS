@@ -1,0 +1,25 @@
+version: '3.11'
+
+services:
+  db:
+    image:  postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: edenw
+      POSTGRES_DB: myDump
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  web:
+    build: .
+    environment:
+      DATABASE_URL: "postgresql://postgres:edenw@db:5432/myDump"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+
+volumes:
+ app-network:

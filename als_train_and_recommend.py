@@ -7,10 +7,10 @@ from implicit.als import AlternatingLeastSquares
 def load_data_and_train():
     conn = psycopg2.connect(
         user="postgres",
-        password="edenw",
-        host="localhost",
-        port="5000",
-        database="myDump"
+        password="MyPassword@123",
+        host="db",
+        port="5432",
+        database="z_bazzar_db"
     )
     print("Connected to PostgreSQL!")
 

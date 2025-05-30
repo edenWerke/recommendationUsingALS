@@ -10,7 +10,7 @@ from sqlalchemy import create_engine
 import os
 from fastapi.middleware.cors import CORSMiddleware
 
-DATABASE_URL = "postgresql://postgres:edenw@localhost:5000/myDump"
+DATABASE_URL = "postgresql://postgres:edenw@db:5432/myDump"
 engine = create_engine(DATABASE_URL)
 
 def load_data_and_train():
